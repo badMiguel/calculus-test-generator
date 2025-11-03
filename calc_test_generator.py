@@ -8,7 +8,7 @@ import operator as op
 import pickle
 from datetime import datetime
 from sys import exception
-from sympy import Derivative, Integral, pprint, diff, integrate, symbols
+from sympy import Derivative, Integral, pprint, diff, integrate, symbols, log, exp
 
 
 # this is to choose between the string + and - randomly. then turns it to an operation
@@ -153,7 +153,7 @@ def question(calculus, solve):
                 # to add more difficulty in the question
                 k1 = random.randint(1, n - 1)
                 n1 = random.randint(1, n - 2)
-                ques = k1 * x**n1 * math.log(polyn)
+                ques = k1 * x**n1 * log(polyn)
 
                 # prints the terms with derivative symbol and proper exponent
                 question = calculus(ques)
@@ -186,7 +186,7 @@ def question(calculus, solve):
                 # to add more difficulty in the question
                 k1 = random.randint(1, n - 1)
                 n1 = random.randint(1, n - 2)
-                ques = k1 * x**n1 * math.exp(polyn)
+                ques = k1 * x**n1 * exp(polyn)
 
                 # prints the terms with derivative symbol and proper exponent
                 question = calculus(ques)
@@ -228,7 +228,7 @@ def question(calculus, solve):
                     # to add more difficulty in the question
                     k1 = random.randint(1, n - 1)
                     n1 = random.randint(1, n - 2)
-                    q = k1 * x**n1 * math.log(polyn)
+                    q = k1 * x**n1 * log(polyn)
 
                 elif ftype == funct_type[2]:
                     print(
@@ -241,7 +241,7 @@ def question(calculus, solve):
                     # to add more difficulty in the question
                     k1 = random.randint(1, n - 1)
                     n1 = random.randint(1, n - 2)
-                    q = k1 * x**n1 * math.exp(polyn)
+                    q = k1 * x**n1 * exp(polyn)
 
                 question = calculus(q)
                 print(f"Question {i} / {quesnumber[0]} \n")
