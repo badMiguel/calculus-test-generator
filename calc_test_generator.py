@@ -227,7 +227,7 @@ def question(calculus, solve):
                     # to add more difficulty in the question
                     k1 = random.randint(1, n - 1)
                     n1 = random.randint(1, n - 2)
-                    q = k1 * x**n1 * math.ln(polyn)
+                    q = k1 * x**n1 * math.log(polyn)
 
                 elif ftype == funct_type[2]:
                     print(
@@ -328,7 +328,7 @@ def answer(ans, anss, u_ans):
 
     print(f"Correct answer:\n{anss}.) ")
     pprint(ans, use_unicode=False)
-    continu3 = input("Press enter to continue.")
+    _ = input("Press enter to continue.")
     return check
 
 
@@ -353,7 +353,7 @@ def scorerecord(r_or_w, calculus):
         print(f"Test done!\nPress enter to exit.\n{calculus} score history:\n")
         for a, b in zip(reversed(diff_total.keys()), reversed(diff_total.values())):
             print(f"{a} -- Score: {b}")
-        done = input()
+        _ = input()
 
     # save score in integration score history
     else:
@@ -369,7 +369,7 @@ def scorerecord(r_or_w, calculus):
         print(f"Test done!\nPress enter to exit.\n{calculus} score history:\n")
         for a, b in zip(reversed(integ_total.keys()), reversed(integ_total.values())):
             print(f"{a} -- Score: {b}")
-        done = input()
+        _ = input()
 
 
 def settings():
@@ -391,14 +391,14 @@ def settings():
                     diff_total = {}
                     with open("diff_scores.pickle", "wb") as p:
                         pickle.dump(diff_total, p)
-                    back = input("Score history cleared.\nPress enter to back.")
+                    _ = input("Score history cleared.\nPress enter to back.")
                     os.system(clear)
 
                 elif choose == "2":
                     integ_total = {}
                     with open("integ_scores.pickle", "wb") as p:
                         pickle.dump(integ_total, p)
-                    back = input("Score history cleared.\nPress enter to back.")
+                    _ = input("Score history cleared.\nPress enter to back.")
                     os.system(clear)
 
                 elif choose == "3":
@@ -408,7 +408,7 @@ def settings():
                         pickle.dump(diff_total, p)
                     with open("integ_scores.pickle", "wb") as p:
                         pickle.dump(integ_total, p)
-                    back = input("Score history cleared.\nPress enter to back.")
+                    _ = input("Score history cleared.\nPress enter to back.")
                     os.system(clear)
 
                 else:
@@ -431,19 +431,19 @@ def settings():
                     difficulty.clear()
                     difficulty.update({"Easy": 3})
                     print("Difficulty successfully updated to 'Easy'.")
-                    back = input("Enter to back.")
+                    _ = input("Enter to back.")
                     os.system(clear)
                 elif difficult == "2":
                     difficulty.clear()
                     difficulty.update({"Medium (default)": 5})
                     print("Difficulty successfully updated to 'Medium (Default)'")
-                    back = input("Enter to back.")
+                    _ = input("Enter to back.")
                     os.system(clear)
                 elif difficult == "3":
                     difficulty.clear()
                     difficulty.update({"Hard": 7})
                     print("Difficulty successfully updated to 'Hard'")
-                    back = input("Enter to back.")
+                    _ = input("Enter to back.")
                     os.system(clear)
                 else:
                     os.system(clear)
@@ -469,7 +469,7 @@ def settings():
                 number = input("Choose how many items you want to answer:  ")
             quesnumber[0] = int(number) * 5
             print(f"Number of questions successfully changed to {quesnumber[0]} items.")
-            back = input("Press enter to back.")
+            _ = input("Press enter to back.")
             os.system(clear)
 
         else:
@@ -497,7 +497,7 @@ def viewscores():
                 reversed(list(diff_total.keys())), reversed(list(diff_total.values()))
             ):
                 print(f"{a} -- Score: {b}")
-            done = input()
+            _ = input()
             os.system(clear)
         elif view == "2":
             print("Viewing integrtion score history:")
@@ -508,7 +508,7 @@ def viewscores():
                 reversed(list(integ_total.keys())), reversed(list(integ_total.values()))
             ):
                 print(f"{a} -- Score: {b}")
-            done = input()
+            _ = input()
             os.system(clear)
         else:
             print("Input Invalid.")
@@ -543,3 +543,5 @@ if __name__ == "__main__":
 
     # dictionary for + and -
     rand_ops = {"+": op.add, "-": op.sub}
+    
+    main()
