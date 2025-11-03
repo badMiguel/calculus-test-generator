@@ -7,6 +7,7 @@ import math
 import operator as op
 import pickle
 from datetime import datetime
+from sys import exception
 from sympy import Derivative, Integral, pprint, diff, integrate, symbols
 
 
@@ -342,8 +343,11 @@ def scorerecord(r_or_w, calculus):
     # save score in differentiation score history
     if calculus == Derivative:
         calculus = "Derivative"
-        with open("diff_scores.pickle", "rb") as p:
-            diff_total = pickle.load(p)
+        try:
+            with open("diff_scores.pickle", "rb") as p:
+                diff_total = pickle.load(p)
+        except EOFError:
+            diff_total = {}
 
         # update scores after a user finishes answering
         diff_total.update({f"{time}": f"{count} / {quesnumber[0]}"})
@@ -358,8 +362,11 @@ def scorerecord(r_or_w, calculus):
     # save score in integration score history
     else:
         calculus = "Integral"
-        with open("integ_scores.pickle", "rb") as p:
-            integ_total = pickle.load(p)
+        try: 
+            with open("integ_scores.pickle", "rb") as p:
+                integ_total = pickle.load(p)
+        except EOFError:
+            integ_total = {}
 
         # update scores after a user finishes answering
         integ_total.update({f"{time}": f"{count} / {quesnumber[0]}"})
@@ -490,8 +497,12 @@ def viewscores():
     while view != "3":
         if view == "1":
             print("Viewing differentiation score history:")
-            with open("diff_scores.pickle", "rb") as p:
-                diff_total = pickle.load(p)
+            try:
+                with open("diff_scores.pickle", "rb") as p:
+                    diff_total = pickle.load(p)
+            except EOFError:
+                diff_total = {}
+
             print("Press enter to back.")
             for a, b in zip(
                 reversed(list(diff_total.keys())), reversed(list(diff_total.values()))
@@ -501,8 +512,12 @@ def viewscores():
             os.system(clear)
         elif view == "2":
             print("Viewing integrtion score history:")
-            with open("integ_scores.pickle", "rb") as p:
-                integ_total = pickle.load(p)
+            try:
+                with open("integ_scores.pickle", "rb") as p:
+                    integ_total = pickle.load(p)
+            except EOFError:
+                integ_total = {}
+
             print("Press enter to back.")
             for a, b in zip(
                 reversed(list(integ_total.keys())), reversed(list(integ_total.values()))
@@ -518,13 +533,15 @@ def viewscores():
 
 
 if __name__ == "__main__":
-    x = symbols("x")
+    diff_score_file = "diff_scores.pickle"
+    if not os.path.exists(diff_score_file):
+        open(diff_score_file, 'wb').close()
 
-    # with open("diff_scores.pickle", 'wb') as p:
-    # pickle.dump(diff_total, p)
-    ##
-    # with open("integ_scores.pickle", 'wb') as p:
-    # pickle.dump(integ_total, p)
+    integ_score_file = "integ_scores.pickle"
+    if not os.path.exists(integ_score_file):
+        open(integ_score_file, 'wb').close()
+
+    x = symbols("x")
 
     user_os = platform.system()
     clear = "cls"
@@ -543,5 +560,5 @@ if __name__ == "__main__":
 
     # dictionary for + and -
     rand_ops = {"+": op.add, "-": op.sub}
-    
+
     main()
