@@ -1,0 +1,574 @@
+<!--
+DISCLAIMER:
+
+The terminal UI part of this demo (xterm.js integration, Pyodide bridge, async input/output) 
+was built with AI assistance (ChatGPT 5 Mini), but the core Python calculus app and logic 
+were developed earlier without AI. 
+
+All original calculation logic, questions, and scoring were created independently.
+-->
+
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>Calculus TUI demo</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: #1f1d2e;
+        }
+
+        #term {
+            display: flex;
+            justify-content: center;
+            height: 700px;
+            max-width: 1000px;
+            border-radius: 20px;
+            overflow: hidden;
+            margin: auto;
+            flex-direction: column;
+        }
+
+        #status {
+            padding: 6px 10px;
+            background: #111;
+            color: #eee;
+            font-family: monospace;
+        }
+
+        .xterm {
+            padding: 20px;
+        }
+
+        .xterm::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        .xterm::-webkit-scrollbar-track {
+            background: #191724;
+        }
+
+        .xterm::-webkit-scrollbar-thumb {
+            background-color: #f6c177;
+            border-radius: 5px;
+            border: 2px solid #191724;
+        }
+
+        .xterm::-webkit-scrollbar-thumb:hover {
+            background-color: #ebbcba;
+        }
+
+        .xterm {
+            scrollbar-width: thin;
+            scrollbar-color: #f6c177 #191724;
+        }
+    </style>
+</head>
+
+<body>
+    <div style="
+                font-family: &quot;Fira Code&quot;, monospace;
+                font-size: 18px;
+                color: #f4ede8;
+                padding: 10px;
+                text-align: center;
+                white-space: pre;
+            ">
+_________        .__               .__         _________
+\_   ___ \_____  |  |   ____  __ __|  |  __ __/   _____/
+/    \  \/\__  \ |  | _/ ___\|  |  \  | |  |  \_____  \ 
+\     \____/ __ \|  |_\  \___|  |  /  |_|  |  /        \
+ \______  (____  /____/\___  >____/|____/____/_______  /
+        \/     \/          \/                        \/ 
+    </div>
+    <div id="term"> </div>
+
+    <footer>
+        <div id="status">Loading Pyodide & packages... please wait.</div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+    <script type="module">
+        const term = new Terminal({
+            cols: 100,
+            rows: 35,
+            cursorBlink: true,
+            fontFamily: "Fira Code, monospace",
+            fontSize: 16,
+            theme: {
+                foreground: "#f4ede8", // text color
+                background: "#191724", // terminal background
+                cursor: "#f6c177", // cursor color
+                selection: "#f6c17750", // semi-transparent selection
+            },
+        });
+        term.open(document.getElementById("term"));
+        term.focus();
+
+        // input handling: build a current line buffer and allow basic editing
+        let lineBuf = "";
+        let resolver = null; // will be set when Python requests input
+
+        // write helper
+        function write(s) {
+            term.write(s.replace(/\n/g, "\r\n"));
+        }
+
+        // expose functions for Pyodide via JS-API later
+        window._py_io = {
+            js_write: (s) => {
+                // s may be a JS string
+                write(String(s) + "\r\n");
+            },
+            js_input: (prompt) => {
+                // write prompt and return a Promise that resolves with user's line (no trailing newline)
+                write(String(prompt || ""));
+                lineBuf = "";
+                return new Promise((resolve) => {
+                    resolver = resolve;
+                });
+            },
+        };
+
+        // terminal keyboard handling (simple)
+        term.onData((e) => {
+            // e contains characters, handle CR, backspace, ctrl-c
+            const code = e.charCodeAt(0);
+            if (code === 13) {
+                // Enter
+                write("\r\n");
+                if (resolver) {
+                    // resolve current input line
+                    const resolved = lineBuf;
+                    resolver(resolved);
+                    resolver = null;
+                }
+            } else if (code === 127) {
+                // Backspace
+                if (lineBuf.length > 0) {
+                    lineBuf = lineBuf.slice(0, -1);
+                    // move cursor back, clear char
+                    term.write("\b \b");
+                }
+            } else if (code === 3) {
+                // Ctrl-C: send ^C and raise KeyboardInterrupt (we simulate by resolving)
+                write("^C\r\n");
+                if (resolver) {
+                    resolver("\x03");
+                    resolver = null;
+                }
+            } else {
+                // regular characters
+                lineBuf += e;
+                term.write(e);
+            }
+        });
+
+        // --- Load Pyodide and run the demo script ---
+        async function main() {
+            const status = document.getElementById("status");
+            status.textContent = "Loading Pyodide... (this may take a few seconds)";
+            // load Pyodide
+            const pyodide = await loadPyodide({
+                indexURL: "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/",
+            });
+            status.textContent = "Installing SymPy (micropip)...";
+            await pyodide.loadPackage("micropip");
+            const micropip = pyodide.pyimport("micropip");
+            // install sympy (can take some seconds)
+            // If you already have SymPy in the pyodide distribution used, you can skip this install.
+            await micropip.install("sympy");
+            status.textContent = "Preparing Python runtime...";
+
+            // expose js functions to Python: js_input (returns JS Promise) and js_write
+            pyodide.globals.set("js_input", window._py_io.js_input);
+            pyodide.globals.set("js_write", window._py_io.js_write);
+
+            // Python code string: adapted from your script to use async input & js_write
+            const pyCode = `
+                    import os, platform, random, math, operator as op, pickle
+                    from datetime import datetime
+                    from sympy import Derivative, Integral, pprint, diff, integrate, symbols, log, exp
+
+                    # get the JS functions exposed from JS side
+                    import js
+                    # helper wrappers
+                    async def input_async(prompt=""):
+                        # js_input returns a Promise => await it
+                        val = await js_input(prompt)
+                        # js_input returns JS strings; convert to Python str
+                        return str(val)
+
+                    def write(s):
+                        # ensure we convert sympy objects cleanly
+                        js_write(str(s))
+
+                    # convert many prints to write(...) and all input(...) to await input_async(...)
+                    # --- Reimplemented CLI using async I/O ---
+                    x = symbols("x")
+
+                    # default state
+                    user_os = platform.system()
+                    clear_cmd = "cls" if user_os == "Windows" else "clear"
+
+                    difficulty = {"medium (default)": 5}
+                    quesnumber = [10]
+
+                    # dictionary for function types
+                    funct_type = ["polynomial", "natural logarithm", "natural exponent"]
+                    rand_ops = {"+": op.add, "-": op.sub}
+
+                    # ensure score files exist in the virtual FS
+                    diff_score_file = "diff_scores.pickle"
+                    integ_score_file = "integ_scores.pickle"
+                    if not os.path.exists(diff_score_file):
+                        open(diff_score_file, 'wb').close()
+                    if not os.path.exists(integ_score_file):
+                        open(integ_score_file, 'wb').close()
+
+                    def opkey():
+                        return random.choice(list(rand_ops.keys()))
+
+                    def addterm(term, n):
+                        terms = [term]
+                        while n > 1:
+                            k = random.randint(1, 10)
+                            n = random.randint(1, n - 1)
+                            term = k * x**n
+                            terms.append(term)
+                        if len(terms) == 1:
+                            polyn = terms[0]
+                        elif len(terms) == 2:
+                            polyn = rand_ops[opkey()](terms[0], terms[1])
+                        elif len(terms) == 3:
+                            polyn = rand_ops[opkey()](terms[0], terms[1])
+                            polyn = rand_ops[opkey()](polyn, terms[2])
+                        elif len(terms) == 4:
+                            polyn = rand_ops[opkey()](terms[0], terms[1])
+                            polyn = rand_ops[opkey()](polyn, terms[2])
+                            polyn = rand_ops[opkey()](polyn, terms[3])
+                        elif len(terms) == 5:
+                            polyn = rand_ops[opkey()](terms[0], terms[1])
+                            polyn = rand_ops[opkey()](polyn, terms[2])
+                            polyn = rand_ops[opkey()](polyn, terms[3])
+                            polyn = rand_ops[opkey()](polyn, terms[4])
+                        return polyn
+
+                    def polynomial(deg):
+                        k = random.randint(1, 10)
+                        n = random.randint(1, deg)
+                        term = k * x**n
+                        polyn = addterm(term, n)
+                        return polyn
+
+                    async def answer(ans, anss, u_ans):
+                        response = ["Good job!", "Nice work!", "Excellent!", "Great Work!", "Keep it up!"]
+                        if u_ans == anss:
+                            write(f\"\\n{response[random.randint(0, 4)]} Answer correct.\")
+                            check = "right"
+                        else:
+                            write("Answer incorrect.\\n")
+                            check = "wrong"
+                        write(f\"Correct answer:\\n{anss}.) \")
+                        write(ans)
+                        await input_async("Press enter to continue.")
+                        return check
+
+                    def choices_sync(question, solve):
+                        # kept as sync wrapper: returns (ans, anslist, anss_letter)
+                        letter = ["a", "b", "c", "d"]
+                        k = random.randint(1, 5)
+                        n = random.randint(1, 3)
+                        randomterm = k * x**n
+                        ans = solve(question)
+                        options = [
+                            ans,
+                            ans * random.randint(2, 3),
+                            rand_ops[opkey()](ans, randomterm),
+                            rand_ops[opkey()]((n + 1) * x, ans),
+                        ]
+                        # shuffle and map to letters
+                        sample = random.sample(options, 4)
+                        mapping = dict(zip(letter, sample))
+                        return ans, mapping
+
+                    async def choices(question, solve):
+                        ans, ansdict = choices_sync(question, solve)
+                        write("\\nChoose the letter of the correct answer:\\n")
+                        for k, v in ansdict.items():
+                            write(f\"{k}.) \")
+                            write(v)
+                            write("")
+                        key = list(ansdict.keys())
+                        value = list(ansdict.values())
+                        anss = key[value.index(ans)]
+                        while True:
+                            u_ans = (await input_async(\"\\nType 'back' to return text\\nEnter the letter of your answer:  \")).lower()
+                            if u_ans == 'back':
+                                return 'back'
+                            if u_ans in key:
+                                return await answer(ans, anss, u_ans)
+                            write(\"Invalid input!\\n\")
+
+                    def scorerecord_sync(r_or_w, calculus):
+                        time = datetime.now()
+                        count = r_or_w.count("right")
+                        if calculus == Derivative:
+                            calculus_name = "Derivative"
+                            try:
+                                with open('diff_scores.pickle', 'rb') as p:
+                                    diff_total = pickle.load(p)
+                            except Exception:
+                                diff_total = {}
+                            diff_total.update({f\"{time}\": f\"{count} / {quesnumber[0]}\"})
+                            with open('diff_scores.pickle', 'wb') as p:
+                                pickle.dump(diff_total, p)
+                            write(f\"Test done!\\n{calculus_name} score history:\\n\")
+                            for a,b in reversed(list(diff_total.items())):
+                                write(f\"{a} -- Score: {b}\")
+                        else:
+                            calculus_name = "Integral"
+                            try:
+                                with open('integ_scores.pickle', 'rb') as p:
+                                    integ_total = pickle.load(p)
+                            except Exception:
+                                integ_total = {}
+                            integ_total.update({f\"{time}\": f\"{count} / {quesnumber[0]}\"})
+                            with open('integ_scores.pickle', 'wb') as p:
+                                pickle.dump(integ_total, p)
+                            write(f\"Test done!\\n{calculus_name} score history:\\n\")
+                            for a,b in reversed(list(integ_total.items())):
+                                write(f\"{a} -- Score: {b}\")
+
+                    async def settings():
+                        write(\"Welcome to settings!\")
+                        write(\"1. Clear score history.\\n2. Change difficulty.\\n3. Change number of questions.\\n4. Back\")
+                        setting = await input_async(\"Choose the number of what action you want:  \")
+                        while setting != \"4\":
+                            if setting == \"1\":
+                                choose = await input_async(\"Clear history:\\n1. Differentiation\\n2. Integral\\n3. Both\\n4. Cancel\\nWhat do you want to clear?  \")
+                                while choose != \"4\":
+                                    if choose == \"1\":
+                                        diff_total = {}
+                                        with open('diff_scores.pickle','wb') as p:
+                                            pickle.dump(diff_total, p)
+                                        await input_async(\"Score history cleared. Press enter to back.\")
+                                    elif choose == \"2\":
+                                        integ_total = {}
+                                        with open('integ_scores.pickle','wb') as p:
+                                            pickle.dump(integ_total, p)
+                                        await input_async(\"Score history cleared. Press enter to back.\")
+                                    elif choose == \"3\":
+                                        diff_total = {}; integ_total = {}
+                                        with open('diff_scores.pickle','wb') as p:
+                                            pickle.dump(diff_total, p)
+                                        with open('integ_scores.pickle','wb') as p:
+                                            pickle.dump(integ_total, p)
+                                        await input_async(\"Score history cleared. Press enter to back.\")
+                                    else:
+                                        write(\"Input invalid!\")
+                                    choose = await input_async(\"Clear history:\\n1. Differentiation\\n2. Integral\\n3. Both\\n4. Cancel\\nWhat do you want to clear?  \")
+                            elif setting == \"2\":
+                                write(\"Change difficulty:\\n\\t1. Easy\\n\\t2. Medium (default)\\n\\t3. Hard\\n\\t4. Back\")
+                                difficult = await input_async(\"Choose new difficulty: \")
+                                while difficult != \"4\":
+                                    if difficult == \"1\":
+                                        difficulty.clear(); difficulty.update({\"Easy\":3})
+                                        write(\"Difficulty successfully updated to 'Easy'.\")
+                                        await input_async(\"Enter to back.\")
+                                    elif difficult == \"2\":
+                                        difficulty.clear(); difficulty.update({\"Medium (default)\":5})
+                                        write(\"Difficulty successfully updated to 'Medium (Default)'\")
+                                        await input_async(\"Enter to back.\")
+                                    elif difficult == \"3\":
+                                        difficulty.clear(); difficulty.update({\"Hard\":7})
+                                        write(\"Difficulty successfully updated to 'Hard'\")
+                                        await input_async(\"Enter to back.\")
+                                    else:
+                                        write(\"Input invalid.\")
+                                    write(\"Change difficulty:\\n\\t1. Easy\\n\\t2. Medium (default)\\n\\t3. Hard\\n\\t4. Back\")
+                                    difficult = await input_async(\"Choose new difficulty: \")
+                            elif setting == \"3\":
+                                write(\"Change number of questions\\n\\t1. 5 items\\n\\t2. 10 items (default)\\n\\t3. 15 items\\n\\t4. 20 items\\n\\t5. Custom\\n\\t6. Back\")
+                                number = await input_async(\"Choose how many items you want to answer:  \")
+                                while not number.isdigit():
+                                    write(\"Input invalid.\")
+                                    number = await input_async(\"Choose how many items you want to answer:  \")
+                                quesnumber[0] = int(number) * 5
+                                write(f\"Number of questions successfully changed to {quesnumber[0]} items.\")
+                                await input_async(\"Press enter to back.\")
+                            else:
+                                write(\"Input not valid.\")
+                            write(\"Welcome to settings!\\n1. Clear score history.\\n2. Change difficulty.\\n3. Change number of questions.\\n4. Back\")
+                            setting = await input_async(\"Choose the number of what action you want:  \")
+
+                    async def viewscores():
+                        write(\"1. Derivative\\n2. Integral\\n3. Back\")
+                        view = await input_async(\"What score history do you want to see?  \")
+                        while view != \"3\":
+                            if view == \"1\":
+                                write(\"Viewing differentiation score history:\")
+                                try:
+                                    with open('diff_scores.pickle','rb') as p:
+                                        diff_total = pickle.load(p)
+                                except Exception:
+                                    diff_total = {}
+                                write(\"Press enter to back.\")
+                                for a,b in reversed(list(diff_total.items())):
+                                    write(f\"{a} -- Score: {b}\")
+                                await input_async('')
+                            elif view == \"2\":
+                                write(\"Viewing integrtion score history:\")
+                                try:
+                                    with open('integ_scores.pickle','rb') as p:
+                                        integ_total = pickle.load(p)
+                                except Exception:
+                                    integ_total = {}
+                                write(\"Press enter to back.\")
+                                for a,b in reversed(list(integ_total.items())):
+                                    write(f\"{a} -- Score: {b}\")
+                                await input_async('')
+                            else:
+                                write(\"Input Invalid.\")
+                            write(\"1. Derivative\\n2. Integral\\n3. Back\")
+                            view = await input_async(\"What score history do you want to see?  \")
+
+                    async def question(calculus, solve):
+                        write(\"Function types:\")
+                        for a,b in zip(funct_type, range(1,4)):
+                            write(f\"\\t{b}. {a[:1].upper() + a[1:]}\")
+                        write(\"\\t4. All function types\\n\\t5. Back\")
+                        ftype = await input_async(\"Choose a function type: \")
+
+                        rightorwrong = []
+                        n = list(difficulty.values())[0]
+                        difficultylevel = list(difficulty.keys())[0]
+
+                        while ftype != \"5\":
+                            if ftype == \"1\":
+                                for i in range(1, quesnumber[0] + 1):
+                                    write(f\"Difficulty: {difficultylevel}\\nChosen function type: {funct_type[int(ftype)-1]} Function\")
+                                    ques = polynomial(n)
+                                    question_expr = calculus(ques)
+                                    write(f\"Question {i} / {quesnumber[0]} \\n\")
+                                    write(question_expr)
+                                    choice = await choices(ques, solve)
+                                    if choice == 'back': break
+                                    rightorwrong.append(choice)
+                                scorerecord_sync(rightorwrong, calculus)
+                            elif ftype == \"2\":
+                                for i in range(1, quesnumber[0] + 1):
+                                    write(f\"Difficulty: {difficultylevel}\\nChosen function type: {funct_type[int(ftype)-1]} Function\")
+                                    write(\"\\nNote: In Python, 'log' is the natural logarithm, hence ln =log\\n\")
+                                    polyn = polynomial(max(1, n - 2))
+                                    k1 = random.randint(1, max(1, n - 1))
+                                    n1 = random.randint(1, max(1, n - 2))
+                                    ques = k1 * x**n1 * log(polyn)
+                                    question_expr = calculus(ques)
+                                    write(f\"Question {i} / {quesnumber[0]} \\n\")
+                                    write(question_expr)
+                                    choice = await choices(ques, solve)
+                                    if choice == 'back': break
+                                    rightorwrong.append(choice)
+                                scorerecord_sync(rightorwrong, calculus)
+                            elif ftype == \"3\":
+                                for i in range(1, quesnumber[0] + 1):
+                                    write(f\"Difficulty: {difficultylevel}\\nChosen function type: {funct_type[int(ftype)-1]} Function\")
+                                    polyn = polynomial(max(1, n - 2))
+                                    k1 = random.randint(1, max(1, n - 1))
+                                    n1 = random.randint(1, max(1, n - 2))
+                                    ques = k1 * x**n1 * exp(polyn)
+                                    question_expr = calculus(ques)
+                                    write(f\"Question {i} / {quesnumber[0]}\\n\")
+                                    write(question_expr)
+                                    choice = await choices(question_expr, solve)
+                                    if choice == 'back': break
+                                    rightorwrong.append(choice)
+                                scorerecord_sync(rightorwrong, calculus)
+                            elif ftype == \"4\":
+                                for i in range(1, quesnumber[0] + 1):
+                                    ftype_rand = random.choice(funct_type)
+                                    if ftype_rand == funct_type[0]:
+                                        q = polynomial(n)
+                                    elif ftype_rand == funct_type[1]:
+                                        polyn = polynomial(max(1, n - 2))
+                                        k1 = random.randint(1, max(1, n - 1))
+                                        n1 = random.randint(1, max(1, n - 2))
+                                        q = k1 * x**n1 * log(polyn)
+                                    else:
+                                        polyn = polynomial(max(1, n - 2))
+                                        k1 = random.randint(1, max(1, n - 1))
+                                        n1 = random.randint(1, max(1, n - 2))
+                                        q = k1 * x**n1 * exp(polyn)
+                                    question_expr = calculus(q)
+                                    write(f\"Question {i} / {quesnumber[0]} \\n\")
+                                    write(question_expr)
+                                    choice = await choices(question_expr, solve)
+                                    if choice == 'back': break
+                                    rightorwrong.append(choice)
+                                scorerecord_sync(rightorwrong, calculus)
+                            else:
+                                write(\"Invalid input!\")
+                            # show options again
+                            write(\"Function types:\")
+                            for a,b in zip(funct_type, range(1,4)):
+                                write(f\"\\t{b}. {a}\")
+                            write(\"\\t4. All function types\\n\\t5. Back\")
+                            ftype = await input_async(\"Choose a function type: \")
+
+                    async def main():
+                        menu = \"\"\"Answer calculus topics:
+                        1. Differentiation
+                        2. Integral
+                    More actions:
+                        3. Settings
+                        4. View score history
+                    \"\"\"
+                        while True:
+                            write(menu)
+                            ques_type = await input_async(\"\\nChoose the number of what you want to do: \")
+                            if ques_type == \"1\": await question(Derivative, diff)
+                            elif ques_type == \"2\": await question(Integral, integrate)
+                            elif ques_type == \"3\": await settings()
+                            elif ques_type == \"4\": await viewscores()
+                            else: write(\"Input invalid!\")
+                        write(\"Goodbye!\")
+                    `;
+
+            // run the python code
+            status.textContent = "Running demo...";
+            try {
+                await pyodide.runPythonAsync(pyCode);
+                // execute the async main() from Python
+                await pyodide.runPythonAsync("import asyncio; asyncio.ensure_future(main())");
+                status.textContent = "Demo loaded — interact with the terminal below.";
+            } catch (err) {
+                status.textContent = "Error starting demo: see console";
+                console.error(err);
+                write("\\r\\n[Pyodide error]\\r\\n" + String(err));
+            }
+        }
+
+        // load Pyodide script dynamically (common CDN)
+        const script = document.createElement("script");
+        script.src = "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js";
+        script.onload = () => {
+            main().catch((e) => console.error(e));
+        };
+        document.head.appendChild(script);
+    </script>
+</body>
+
+</html>
